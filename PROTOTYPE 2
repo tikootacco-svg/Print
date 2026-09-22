@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PrintFlow — Print, tracked from click to pickup</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lucide-static/0.363.0/umd/lucide.min.js"></script>
+<style>
+  :root{
+    --ink:#1B2430;
+    --ink-soft:#3A4453;
+    --paper:#F7F4EC;
+    --paper-deep:#EDE8DA;
+    --press:#B7311F;
+    --press-deep:#8E2417;
+    --line:#D8D2C0;
+    --ok:#2F6B4F;
+  }
+  *{box-sizing:border-box;}
+  html,body{background:var(--paper);}
+  body{font-family:'Inter',system-ui,sans-serif;color:var(--ink);}
+  .font-display{font-family:'Archivo',system-ui,sans-serif;}
+  .font-mono{font-family:'IBM Plex Mono',monospace;}
+
+  .paper-texture{
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(27,36,48,0.055) 1px, transparent 0);
+    background-size: 14px 14px;
+  }
+
+  .crop-mark{position:relative;}
+  .crop-mark::before,.crop-mark::after{content:"";position:absolute;background:var(--ink);opacity:.25;}
+  .crop-mark::before{width:10px;height:1px;top:-1px;left:-1px;}
+  .crop-mark::after{width:1px;height:10px;top:-1px;left:-1px;}
+
+  .step-node{
+    width:2.25rem;height:2.25rem;border-radius:9999px;
+    display:flex;align-items:center;justify-content:center;
+    border:1.5px solid var(--line);
+    font-family:'IBM Plex Mono',monospace;font-size:.8rem;
+    background:var(--paper);color:var(--ink-soft);
+    transition:all .25s ease;
+  }
+  .step-node.active{border-color:var(--press);color:#fff;background:var(--press);box-shadow:0 0 0 4px rgba(183,49,31,0.12);}
+  .step-node.done{border-color:var(--ok);color:#fff;background:var(--ok);}
+  .step-track{height:1.5px;background:var(--line);flex:1;position:relative;top:0;}
+  .step-track.done{background:var(--ok);}
+
+  .card{
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:.5rem;
+  }
+  .card-select{cursor:pointer;transition:border-color .15s ease, transform .1s ease;}
+  .card-select:hover{border-color:#B8AF95;}
+  .card-select.selected{border-color:var(--press);box-shadow:inset 0 0 0 1px var(--press);}
+
+  .pill{
+    display:inline-flex;align-items:center;gap:.35rem;
+    padding:.2rem .55rem;border-radius:9999px;font-size:.72rem;font-weight:600;
+    font-family:'IBM Plex Mono',monospace;letter-spacing:.02em;
+  }
+  .pill-queue{background:#FBEEE9;color:var(--press-deep);}
+  .pill-open{background:#E9F2ED;color:var(--ok);}
+  .pill-closed{background:#EFEBE0;color:#8A8270;}
+
+  .btn-primary{
+    background:var(--press);color:#fff;border-radius:.4rem;
+    padding:.7rem 1.3rem;font-weight:600;font-size:.9rem;
+    transition:background .15s ease, transform .1s ease;
+    display:inline-flex;align-items:center;gap:.5rem;
+  }
+  .btn-primary:hover{background:var(--press-deep);}
+  .btn-primary:disabled{background:#CBC3B0;cursor:not-allowed;color:#8A8270;}
+  .btn-primary:active:not(:disabled){transform:translateY(1px);}
+
+  .btn-ghost{
+    background:transparent;color:var(--ink-soft);border-radius:.4rem;
+    padding:.7rem 1.1rem;font-weight:600;font-size:.9rem;
+    border:1px solid var(--line);
+    display:inline-flex;align-items:center;gap:.5rem;
+    transition:background .15s ease;
+  }
+  .btn-ghost:hover{background:var(--paper-deep);}
+
+  .stepper-btn{
+    width:2rem;height:2rem;border:1px solid var(--line);border-radius:.35rem;
+    display:flex;align-items:center;justify-content:center;color:var(--ink-soft);
+    transition:background .15s ease;
+  }
+  .stepper-btn:hover{background:var(--paper-deep);}
+
+  .opt-tile{
+    border:1px solid var(--line);border-radius:.4rem;padding:.6rem .75rem;
+    cursor:pointer;transition:border-color .15s ease;font-size:.85rem;
+  }
+  .opt-tile:hover{border-color:#B8AF95;}
+  .opt-tile.selected{border-color:var(--press);background:#FBF3F1;}
+
+  .dropzone{
+    border:1.5px dashed var(--line);border-radius:.6rem;
+    transition:border-color .15s ease, background .15s ease;
+  }
+  .dropzone.drag{border-color:var(--press);background:#FBF3F1;}
+
+  .toast{
+    font-family:'Inter',sans-serif;
+    animation: rise .18s ease-out;
+  }
+  @keyframes rise{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+
+  .receipt{
+    background:
+      repeating-linear-gradient(transparent, transparent 27px, rgba(27,36,48,0.05) 28px);
+  }
+
+  .status-dot{width:.5rem;height:.5rem;border-radius:9999px;background:var(--press);
+    box-shadow:0 0 0 3px rgba(183,49,31,0.18);animation:pulse 1.8s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.45;}}
+
+  ::selection{background:var(--press);color:#fff;}
+  :focus-visible{outline:2px solid var(--press);outline-offset:2px;}
+
+  @media (prefers-reduced-motion: reduce){
+    *{animation:none !important;transition:none !important;}
+  }
+
+  .fade-step{animation: fadein .22s ease;}
+  @keyframes fadein{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:translateY(0);}}
+</style>
+</head>
+<body class="paper-texture min-h-screen">
+
+<div id="toast-root" class="fixed top-4 right-4 z-50 flex flex-col gap-2 items-end"></div>
+
+<!-- HEADER -->
+<header class="border-b" style="border-color:var(--line);">
+  <div class="max-w-5xl mx-auto px-5 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-2.5">
+      <div class="w-8 h-8 rounded flex items-center justify-center" style="background:var(--ink);">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F7F4EC" stroke-width="2.2"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z"/></svg>
+      </div>
+      <span class="font-display font-800 text-lg tracking-tight" style="font-weight:800;">PrintFlow</span>
+    </div>
+    <button id="history-toggle" class="text-sm font-medium flex items-center gap-1.5" style="color:var(--ink-soft);">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>
+      Order history
+    </button>
+  </div>
+</header>
+
+<main class="max-w-5xl mx-auto px-5 py-8 pb-24">
+
+  <!-- PROGRESS TRACKER -->
+  <div class="flex items-center mb-10" id="tracker"></div>
+
+  <!-- HISTORY PANEL (hidden by default) -->
+  <div id="history-panel" class="hidden mb-8 card p-5">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="font-display font-700 text-sm" style="font-weight:700;">Recent orders</h3>
+      <button id="history-close" class="text-xs" style="color:var(--ink-soft);">Close</button>
+    </div>
+    <div id="history-list" class="flex flex-col gap-2"></div>
+  </div>
+
+  <!-- STEP CONTENT -->
+  <div id="step-content"></div>
+
+  <!-- NAV -->
+  <div class="flex items-center justify-between mt-10">
+    <button id="btn-back" class="btn-ghost">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      Back
+    </button>
+    <button id="btn-next" class="btn-primary">
+      Continue
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </button>
+  </div>
+
+</main>
+
+<footer class="text-center text-xs pb-8" style="color:#8A8270;">Mock demo — no files leave your browser, no real orders are placed.</footer>
+
+<script>
+lucide.createIcons();
+
+/* -------------------- DATA -------------------- */
+
+const SHOPS = [
+  { id:'campus', name:'Campus QuickPrint', distance:'0.3 mi', ahead:3, waitMin:12, rating:4.6, hours:'7am – 9pm', open:true, baseTurnMin:15 },
+  { id:'downtown', name:'Downtown Press & Bind', distance:'1.1 mi', ahead:7, waitMin:28, rating:4.8, hours:'8am – 6pm', open:true, baseTurnMin:25 },
+  { id:'express', name:'Express Blueprint Lab', distance:'2.4 mi', ahead:0, waitMin:4, rating:4.3, hours:'9am – 5pm', open:false, baseTurnMin:10 },
+];
+
+const PAPER_SIZES = [
+  { id:'a4', label:'A4', pricePerPage:0.08 },
+  { id:'a3', label:'A3', pricePerPage:0.16 },
+  { id:'letter', label:'Letter', pricePerPage:0.08 },
+  { id:'legal', label:'Legal', pricePerPage:0.10 },
+];
+
+const PAPER_TYPES = [
+  { id:'standard', label:'Standard 70gsm', pricePerPage:0.00 },
+  { id:'heavy', label:'Heavyweight 100gsm', pricePerPage:0.05 },
+  { id:'glossy', label:'Glossy Photo Paper', pricePerPage:0.35 },
+  { id:'matte', label:'Matte Cardstock 220gsm', pricePerPage:0.45 },
+];
+
+const COLOR_MODES = [
+  { id:'bw', label:'Black & White', pricePerPage:0.00 },
+  { id:'color', label:'Full Color', pricePerPage:0.25 },
+];
+
+const SIDES = [
+  { id:'single', label:'Single-sided', multiplier:1 },
+  { id:'duplex', label:'Duplex (double-sided)', multiplier:0.6 },
+];
+
+const FINISHING = [
+  { id:'none', label:'None', fee:0 },
+  { id:'staple', label:'Stapled (corner)', fee:0.50 },
+  { id:'spiral', label:'Spiral bound', fee:3.50 },
+];
+
+/* -------------------- STATE -------------------- */
+
+const state = {
+  step: 1,
+  shopId: null,
+  file: null, // {name, sizeMB, pages}
+  config: {
+    paperSize: 'a4',
+    paperType: 'standard',
+    colorMode: 'bw',
+    sides: 'single',
+    copies: 1,
+    finishing: 'none',
+  },
+};
+
+const STEPS = ['Shop','Upload','Configure','Review','Confirm'];
+
+/* -------------------- HELPERS -------------------- */
+
+function $(sel, root=document){ return root.querySelector(sel); }
+function el(tag, cls, html){ const e=document.createElement(tag); if(cls) e.className=cls; if(html!==undefined) e.innerHTML=html; return e; }
+
+function toast(msg, type='error'){
+  const root = $('#toast-root');
+  const colors = type==='error' ? 'background:#FBEEE9;color:#8E2417;border-color:#E8C9C0;' : 'background:#E9F2ED;color:#2F6B4F;border-color:#C7DED2;';
+  const t = el('div','toast px-4 py-2.5 rounded-md border text-sm font-medium shadow-sm');
+  t.style.cssText = colors;
+  t.textContent = msg;
+  root.appendChild(t);
+  setTimeout(()=>{ t.style.transition='opacity .3s ease'; t.style.opacity='0'; setTimeout(()=>t.remove(),300); }, 2600);
+}
+
+function getShop(){ return SHOPS.find(s=>s.id===state.shopId); }
+function getBy(list,id){ return list.find(x=>x.id===id); }
+
+function calcCost(){
+  const pages = state.file ? state.file.pages : 0;
+  const size = getBy(PAPER_SIZES, state.config.paperSize);
+  const type = getBy(PAPER_TYPES, state.config.paperType);
+  const color = getBy(COLOR_MODES, state.config.colorMode);
+  const sides = getBy(SIDES, state.config.sides);
+  const finish = getBy(FINISHING, state.config.finishing);
+  const copies = state.config.copies;
+
+  const perPageRate = (size.pricePerPage + type.pricePerPage + color.pricePerPage) * sides.multiplier;
+  const printingSubtotal = perPageRate * pages * copies;
+  const finishingFee = finish.fee * copies;
+  const total = printingSubtotal + finishingFee;
+
+  return { pages, size, type, color, sides, finish, copies, perPageRate, printingSubtotal, finishingFee, total };
+}
+
+function calcTurnaround(){
+  const shop = getShop();
+  if(!shop) return { readyMin:0, readyLabel:'—' };
+  const pages = state.file ? state.file.pages * state.config.copies : 0;
+  const printMin = Math.ceil(pages / 25); // ~25 pages/min mock press speed
+  const finishExtra = state.config.finishing === 'spiral' ? 4 : state.config.finishing === 'staple' ? 1 : 0;
+  const readyMin = shop.waitMin + shop.baseTurnMin + printMin + finishExtra;
+  const readyDate = new Date(Date.now() + readyMin*60000);
+  const readyLabel = readyDate.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  return { readyMin, readyLabel };
+}
+
+/* -------------------- TRACKER -------------------- */
+
+function renderTracker(){
+  const track = $('#tracker');
+  track.innerHTML = '';
+  STEPS.forEach((label, i)=>{
+    const n = i+1;
+    const wrap = el('div','flex items-center flex-1 last:flex-none');
+    const node = el('div', 'step-node ' + (n < state.step ? 'done' : n === state.step ? 'active' : ''));
+    node.innerHTML = n < state.step ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>' : String(n).padStart(2,'0');
+    const labelWrap = el('div','ml-2 mr-3 hidden sm:block');
+    labelWrap.innerHTML = `<div class="text-[.7rem] font-mono uppercase tracking-wide" style="color:${n===state.step?'var(--ink)':'#8A8270'}">${label}</div>`;
+    wrap.appendChild(node);
+    wrap.appendChild(labelWrap);
+    if(n < STEPS.length){
+      const line = el('div', 'step-track ' + (n < state.step ? 'done' : ''));
+      wrap.appendChild(line);
+    }
+    track.appendChild(wrap);
+  });
+}
+
+/* -------------------- STEP 1: SHOP -------------------- */
+
+function renderStep1(){
+  const c = el('div','fade-step');
+  c.innerHTML = `
+    <h2 class="font-display text-2xl mb-1" style="font-weight:800;">Pick a print shop</h2>
+    <p class="text-sm mb-6" style="color:var(--ink-soft);">Queue status updates live. Choose one to lock in your base turnaround.</p>
+    <div class="grid sm:grid-cols-3 gap-4" id="shop-grid"></div>
+  `;
+  const grid = $('#shop-grid', c);
+  SHOPS.forEach(shop=>{
+    const card = el('div','card card-select p-4 ' + (state.shopId===shop.id ? 'selected':''));
+    card.innerHTML = `
+      <div class="flex items-start justify-between mb-2">
+        <h3 class="font-display text-sm" style="font-weight:700;">${shop.name}</h3>
+        <span class="pill ${shop.open ? 'pill-open':'pill-closed'}">${shop.open? 'Open':'Closed'}</span>
+      </div>
+      <div class="text-xs mb-3 flex items-center gap-1" style="color:var(--ink-soft);">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-8-6.5-8-12a8 8 0 1 1 16 0c0 5.5-8 12-8 12z"/><circle cx="12" cy="9" r="2.5"/></svg>
+        ${shop.distance} · ${shop.hours}
+      </div>
+      <div class="flex items-center gap-2 mb-2">
+        <span class="pill pill-queue">${shop.ahead} orders ahead</span>
+        <span class="text-xs font-mono" style="color:var(--ink-soft);">~${shop.waitMin} min wait</span>
+      </div>
+      <div class="flex items-center gap-1 text-xs" style="color:var(--ink-soft);">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="#B7311F" stroke="none"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7-6.2-3.9-6.2 3.9 1.6-7L2 9.2l7.1-.6z"/></svg>
+        ${shop.rating}
+      </div>
+    `;
+    card.addEventListener('click', ()=>{
+      if(!shop.open){ toast(shop.name + ' is currently closed.'); return; }
+      state.shopId = shop.id;
+      render();
+    });
+    grid.appendChild(card);
+  });
+  return c;
+}
+
+/* -------------------- STEP 2: UPLOAD -------------------- */
+
+function estimatePages(sizeBytes){
+  // heuristic: ~55KB per printed page for a typical text pdf
+  const kb = sizeBytes / 1024;
+  return Math.max(1, Math.round(kb / 55));
+}
+
+function renderStep2(){
+  const c = el('div','fade-step');
+  c.innerHTML = `
+    <h2 class="font-display text-2xl mb-1" style="font-weight:800;">Upload your document</h2>
+    <p class="text-sm mb-6" style="color:var(--ink-soft);">PDF only. We'll estimate your page count automatically.</p>
+    <div id="upload-zone-wrap"></div>
+  `;
+  const wrap = $('#upload-zone-wrap', c);
+
+  if(!state.file){
+    const zone = el('div','dropzone p-10 flex flex-col items-center justify-center text-center cursor-pointer');
+    zone.innerHTML = `
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--ink-soft)" stroke-width="1.6" class="mb-3"><path d="M12 3v12"/><path d="M7 8l5-5 5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+      <div class="font-medium text-sm mb-1">Drag and drop your PDF here</div>
+      <div class="text-xs" style="color:#8A8270;">or click to browse · .pdf only</div>
+      <input type="file" id="file-input" accept="application/pdf,.pdf" class="hidden" />
+    `;
+    const input = $('#file-input', zone);
+    zone.addEventListener('click', ()=> input.click());
+    ['dragenter','dragover'].forEach(evt=> zone.addEventListener(evt, e=>{ e.preventDefault(); zone.classList.add('drag'); }));
+    ['dragleave','drop'].forEach(evt=> zone.addEventListener(evt, e=>{ e.preventDefault(); zone.classList.remove('drag'); }));
+    zone.addEventListener('drop', e=>{ handleFiles(e.dataTransfer.files); });
+    input.addEventListener('change', e=> handleFiles(e.target.files));
+    wrap.appendChild(zone);
+  } else {
+    const card = el('div','card p-5 flex items-start gap-4');
+    card.innerHTML = `
+      <div class="w-11 h-11 rounded flex items-center justify-center shrink-0" style="background:var(--paper-deep);">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--press)" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+      </div>
+      <div class="flex-1 min-w-0">
+        <div class="font-medium text-sm truncate">${state.file.name}</div>
+        <div class="text-xs mt-0.5 font-mono" style="color:var(--ink-soft);">${state.file.sizeMB} MB · ~${state.file.pages} pages estimated</div>
+      </div>
+      <button id="remove-file" class="text-xs font-medium shrink-0" style="color:var(--press);">Remove</button>
+    `;
+    $('#remove-file', card).addEventListener('click', ()=>{ state.file = null; render(); });
+    wrap.appendChild(card);
+  }
+  return c;
+}
+
+function handleFiles(fileList){
+  const file = fileList[0];
+  if(!file) return;
+  const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+  if(!isPdf){
+    toast('Only PDF files are accepted. Please choose a .pdf file.');
+    return;
+  }
+  state.file = {
+    name: file.name,
+    sizeMB: (file.size / (1024*1024)).toFixed(2),
+    pages: estimatePages(file.size),
+  };
+  toast('PDF uploaded successfully.', 'success');
+  render();
+}
+
+/* -------------------- STEP 3: CONFIGURE -------------------- */
+
+function optTile(list, currentId, onPick, keyField='label'){
+  const wrap = el('div','grid grid-cols-2 gap-2');
+  list.forEach(opt=>{
+    const t = el('div','opt-tile ' + (opt.id===currentId?'selected':''));
+    let priceLabel = '';
+    if('pricePerPage' in opt) priceLabel = opt.pricePerPage>0 ? `+$${opt.pricePerPage.toFixed(2)}/pg` : 'included';
+    if('fee' in opt) priceLabel = opt.fee>0 ? `+$${opt.fee.toFixed(2)}` : 'included';
+    t.innerHTML = `<div class="font-medium">${opt.label}</div><div class="text-[.7rem] font-mono mt-0.5" style="color:var(--ink-soft);">${priceLabel}</div>`;
+    t.addEventListener('click', ()=>{ onPick(opt.id); render(); });
+    wrap.appendChild(t);
+  });
+  return wrap;
+}
+
+function renderStep3(){
+  const c = el('div','fade-step');
+  c.innerHTML = `
+    <h2 class="font-display text-2xl mb-1" style="font-weight:800;">Print configuration</h2>
+    <p class="text-sm mb-6" style="color:var(--ink-soft);">Adjust specs below — costs update live.</p>
+    <div class="grid md:grid-cols-2 gap-6" id="config-grid"></div>
+  `;
+  const grid = $('#config-grid', c);
+
+  function section(title){
+    const s = el('div','');
+    s.innerHTML = `<div class="text-xs font-mono uppercase tracking-wide mb-2" style="color:#8A8270;">${title}</div>`;
+    return s;
+  }
+
+  const s1 = section('Paper size');
+  s1.appendChild(optTile(PAPER_SIZES, state.config.paperSize, id=>state.config.paperSize=id));
+  grid.appendChild(s1);
+
+  const s2 = section('Paper type / weight');
+  s2.appendChild(optTile(PAPER_TYPES, state.config.paperType, id=>state.config.paperType=id));
+  grid.appendChild(s2);
+
+  const s3 = section('Color mode');
+  s3.appendChild(optTile(COLOR_MODES, state.config.colorMode, id=>state.config.colorMode=id));
+  grid.appendChild(s3);
+
+  const s4 = section('Sides');
+  s4.appendChild(optTile(S
